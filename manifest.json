@@ -1,0 +1,22 @@
+{
+  "name": "Inventario Frigo PWA",
+  "short_name": "Inventario",
+  "description": "Gestore inventario e scadenze alimentari con scanner barcode.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#22c55e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://placehold.co/192x192/22c55e/white?text=Icon&font=sans",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://placehold.co/512x512/22c55e/white?text=Icon&font=sans",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

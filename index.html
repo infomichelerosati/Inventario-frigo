@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario Frigo</title>
+    
+    <!-- Tailwind CSS CDN --><script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome CDN --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    
+    <!-- Collegamento al Manifest --><link rel="manifest" href="manifest.json">
+    
+    <!-- Meta per PWA --><meta name="theme-color" content="#317EFB"/>
+    <link rel="apple-touch-icon" href="images/icon-192x192.png">
+
+    <style>
+        /* Stile per il mirino dello scanner */
+        #interactive.viewport { position: relative; }
+            @keyframes scanline {
+                0% { top: 10%; }
+                50% { top: 90%; }
+                100% { top: 10%; }
+            }
+
+            /* --- Stile per il watermark animato --- */
+            .michele-watermark {
+                font-size: 0.75rem; /* text-xs, piccolo come richiesto */
+                font-weight: 600; /* semibold */
+                /* Un gradiente arcobaleno per l'animazione */
+                background: linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899);
+                background-size: 300% auto;
+                -webkit-background-clip: text;
+                background-clip: text;
+                color: transparent;
+                /* Animazione combinata: flusso gradiente + pulse */
+                animation: gradient-flow 4s linear infinite, 
+                             gentle-pulse 2.5s infinite ease-in-out;
+                transform-origin: center; /* Assicura che il pulse sia centrato */
+            }
+
+            @keyframes gradient-flow {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+
+            @keyframes gentle-pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); } /* Leggero pulse */
+            }
+            /* --- Fine stile watermark --- */
+
+            /* Stile per i date-picker in dark mode */
+            input[type="date"] {
+                color-scheme: dark;
+            }
+
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans leading-normal tracking-normal h-screen pb-16">
+
+    <!-- Watermark di Michele --><div class="fixed top-2 left-2 z-[9999] bg-transparent border-none">
+        <p class="michele-watermark">Powered By Michele Rosati</p>
+    </div>
+
+    <div class="container mx-auto max-w-lg p-4 h-full flex flex-col">
+
+        <!-- Header --><header class="mb-4 text-center flex-shrink-0">
+            <h1 class="text-3xl font-bold text-green-500"><i class="fas fa-box-archive mr-2"></i>Inventario Frigo</h1>
+        </header>
+
+        <!-- Vista Scanner (Nascosta) --><div id="scanner-view" class="hidden fixed inset-0 bg-black z-50">
+            <div id="interactive" class="viewport"></div>
+            <button id="stop-scan-btn" class="absolute bottom-4 left-4 z-60 bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
+                <i class="fas fa-times"></i>
+                <span>Annulla</span>
+            </button>
+        </div>
+
+        <!-- Vista Inventario: Contiene i due box scrollabili --><div id="inventory-display" class="flex-1 min-h-0 flex flex-col space-y-4">
+            
+            <!-- Sezione Alert Scadenze (Box 1) --><div id="alerts-container-wrapper" class="bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col max-h-64">
+                <h2 class="text-xl font-semibold mb-2 text-red-500 flex-shrink-0"><i class="fas fa-triangle-exclamation mr-2"></i>In Scadenza</h2>
+                
+                <!-- Wrapper per lo scrolling degli alert --><div id="alerts-list-wrapper" class="flex-1 overflow-y-auto mt-2 pr-1">
+                    <!-- Gli alert verranno iniettati qui da app.js --><p class="text-sm text-gray-400 italic">Nessun prodotto in scadenza imminente.</p>
+                </div>
+            </div>
+
+            <!-- Lista Inventario (Box 2) --><div id="inventory-list-container-wrapper" class="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col">
+                <h2 class="text-xl font-semibold mb-2 text-gray-200 flex-shrink-0"><i class="fas fa-boxes-stacked mr-2"></i>Il tuo Inventario</h2>
+                
+                <!-- Wrapper per lo scrolling dell'inventario --><div id="inventory-list" class="space-y-3 flex-1 overflow-y-auto mt-3 pr-2">
+                    <!-- I prodotti verranno iniettati qui da app.js --><p id="empty-inventory-msg" class="text-gray-400 italic">Il tuo inventario è vuoto.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vista Ricerca (Nascosta) --><div id="search-view" class="hidden flex-1 min-h-0 flex flex-col space-y-4">
+            <div class="p-4 bg-gray-800 rounded-lg shadow-md flex-shrink-0">
+                <input id="search-input" type="search" placeholder="Cerca per nome o brand..." class="shadow appearance-none border border-gray-600 rounded w-full py-3 px-4 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700">
+            </div>
+            
+            <div id="search-results-container" class="flex-1 min-h-0 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col">
+                <h2 class="text-xl font-semibold mb-2 text-gray-200 flex-shrink-0"><i class="fas fa-search mr-2"></i>Risultati Ricerca</h2>
+                <div id="search-results-list" class="space-y-3 flex-1 overflow-y-auto mt-3 pr-2">
+                    <p class="text-gray-400 italic">Inizia a digitare per cercare nell'anagrafica...</p>
+                </div>
+            </div>
+        </div>
+
+
+    </div> <!-- Fine container principale --><!-- Barra di Navigazione Fissa --><footer class="fixed bottom-0 left-0 right-0 z-30 max-w-lg mx-auto bg-gray-800 border-t border-gray-700 shadow-lg">
+        <div class="flex justify-around items-center h-16">
+            
+            <!-- Pulsante Inventario --><button id="nav-inventory-btn" class="nav-btn text-green-500 flex flex-col items-center justify-center w-full hover:bg-gray-700 transition-colors">
+                <i class="fas fa-boxes-stacked text-xl"></i>
+                <span class="text-xs mt-1">Inventario</span>
+            </button>
+
+            <!-- Pulsante Scansiona (Centrale) --><button id="nav-scan-btn" class="text-gray-300 flex flex-col items-center justify-center w-full h-full transform -translate-y-4">
+                <div class="bg-green-500 rounded-full h-16 w-16 flex items-center justify-center shadow-lg hover:bg-green-600 border-4 border-gray-800">
+                    <i class="fas fa-barcode text-3xl text-white"></i>
+                </div>
+            </button>
+
+            <!-- Pulsante Ricerca --><button id="nav-search-btn" class="nav-btn text-gray-400 flex flex-col items-center justify-center w-full hover:bg-gray-700 transition-colors">
+                <i class="fas fa-search text-xl"></i>
+                <span class="text-xs mt-1">Ricerca</span>
+            </button>
+
+        </div>
+    </footer><!-- Modal: Aggiungi Anagrafica Prodotto (Nascosto) --><div id="add-product-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md text-gray-200">
+            <h3 class="text-lg font-bold mb-4"><i class="fas fa-question-circle mr-2 text-yellow-400"></i>Prodotto Sconosciuto</h3>
+            <p class="mb-4">Questo codice a barre non è nel database. Aggiungi i dettagli.</p>
+            <form id="add-product-form">
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2">Codice a Barre</label>
+                    <input id="product-barcode" type="text" class="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 text-gray-100 leading-tight focus:outline-none focus:shadow-outline bg-gray-600" readonly>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2">Nome Prodotto</label>
+                    <input id="product-name" type="text" placeholder="Es. Pasta" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700" required>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2">Brand</label>
+                    <input id="product-brand" type="text" placeholder="Es. Barilla" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2" for="product-image-upload">Immagine Prodotto (Opzionale)</label>
+                    <input id="product-image-upload" type="file" accept="image/*" capture="environment" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-500 file:text-white hover:file:bg-green-600">
+                    <canvas id="image-canvas" class="hidden"></canvas> <!-- Canvas per ridimensionamento --></div>
+                <div class="flex items-center justify-end space-x-2">
+                    <button id="cancel-add-product" type="button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Annulla</button>
+                    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Salva e Aggiungi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Carica Istanza Prodotto (Nascosto) --><div id="add-instance-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md text-gray-200">
+            <h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle mr-2 text-green-400"></i>Carica Prodotto</h3>
+            <div class="mb-4">
+                <p><strong>Prodotto:</strong> <span id="instance-name"></span></p>
+                <p><strong>Barcode:</strong> <span id="instance-barcode"></span></p>
+            </div>
+            <form id="add-instance-form">
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2" for="instance-expiry">Data di Scadenza</label>
+                    <input id="instance-expiry" type="date" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700" required>
+                </div>
+                <div class="flex items-center justify-end space-x-2">
+                    <button id="cancel-add-instance" type="button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Annulla</button>
+                    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Carica in Inventario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Nuovo Modal: Dettagli Prodotto (Nascosto) --><div id="product-detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md text-gray-200 relative">
+            <button id="close-product-detail-modal" class="absolute top-3 right-3 text-gray-400 hover:text-gray-200">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <h3 class="text-2xl font-bold mb-4 text-green-500 text-center" id="detail-product-name"></h3>
+            <img id="detail-product-image" class="w-48 h-48 object-cover rounded-lg mx-auto mb-4 border border-gray-700" src="images/placeholder.png" alt="Immagine Prodotto">
+            <p class="text-center text-sm text-gray-400 mb-4" id="detail-product-brand"></p>
+            <p class="text-center text-xs text-gray-500 mb-6" id="detail-product-barcode"></p>
+
+            <h4 class="text-lg font-semibold mb-2 text-gray-300"><i class="fas fa-boxes mr-2"></i>I tuoi articoli:</h4>
+            <div id="detail-instances-list" class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                <!-- Le istanze di questo prodotto verranno caricate qui --><p class="text-sm text-gray-500 italic">Nessun articolo di questo tipo in inventario.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Prompt Aggiornamento (Nascosto) --><div id="update-prompt-modal" class="hidden fixed bottom-4 right-4 z-50">
+        <div class="bg-green-700 text-white p-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <i class="fas fa-arrow-up-from-bracket"></i>
+            <span>Nuova versione disponibile!</span>
+            <button id="update-button" class="bg-gray-100 text-green-800 font-bold py-1 px-3 rounded-md hover:bg-gray-200">Aggiorna</S>
+        </div>
+    </div>
+    
+    <!-- NUOVO Modal: Conferma Azione (Nascosto) --><div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm text-gray-200">
+            <h3 class="text-lg font-bold mb-4 text-yellow-400" id="confirm-title"><i class="fas fa-exclamation-triangle mr-2"></i>Conferma Azione</h3>
+            <p class="mb-6" id="confirm-message">Sei sicuro di voler procedere?</p>
+            <div class="flex items-center justify-end space-x-2">
+                <button id="confirm-btn-cancel" type="button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Annulla</button>
+                <button id="confirm-btn-confirm" type="button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Conferma</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas per ridimensionamento temporaneo (nascosto) --><canvas id="temp-canvas" class="hidden"></canvas>
+
+    <!-- QuaggaJS CDN --><script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    
+    <!-- Logica Applicazione --><script src="app.js" type="module"></script>
+</body>
+</html>
