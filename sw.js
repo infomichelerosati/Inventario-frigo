@@ -1,4 +1,4 @@
-const CACHE_NAME = 'food-inventory-cache-v5'; // Versione 5 (include modal conferma)
+const CACHE_NAME = 'food-inventory-cache-v8'; // Versione 5 (include modal conferma)
 
 // Lista delle risorse fondamentali da mettere in cache
 const urlsToCache = [
@@ -87,4 +87,5 @@ self.addEventListener('message', event => {
         console.log('SW: Ricevuto messaggio SKIP_WAITING.');
         self.skipWaiting();
     }
+
 });
