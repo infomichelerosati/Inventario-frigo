@@ -223,11 +223,9 @@ function startScanner() {
             type: "LiveStream",
             target: document.querySelector('#interactive'),
             constraints: {
-                // Rimuoviamo i vincoli di risoluzione
-                // width: { min: 640 },
-                // height: { min: 480 },
+                // v8: Rimosse tutte le constraints tranne facingMode
+                // per la massima compatibilità
                 facingMode: "environment", // Usa la fotocamera posteriore
-                aspectRatio: { min: 1, max: 2 }
             },
         },
         decoder: {
@@ -240,7 +238,7 @@ function startScanner() {
             ] // Supporto EAN, UPC, Code 128, Code 39, Codabar
         },
         locate: true, // Prova a localizzare il codice a barre
-        debug: { // <-- SPOSTATO QUI, AL LIVELLO CORRETTO
+        debug: { // Debug per visualizzare i riquadri
             showCanvas: true,
             showPatches: true,
             showFoundPatches: true,
