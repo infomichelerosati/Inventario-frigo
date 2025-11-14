@@ -37,7 +37,6 @@ const addInstanceForm = document.getElementById('add-instance-form');
 const instanceNameSpan = document.getElementById('instance-name');
 const instanceBarcodeSpan = document.getElementById('instance-barcode');
 const instanceExpiryInput = document.getElementById('instance-expiry');
-const instanceQuantityInput = document.getElementById('instance-quantity'); // AGGIUNTO
 const cancelAddInstanceBtn = document.getElementById('cancel-add-instance');
 
 // Modal Dettagli Prodotto
@@ -49,25 +48,13 @@ const detailProductBrand = document.getElementById('detail-product-brand');
 const detailProductBarcode = document.getElementById('detail-product-barcode');
 const detailInstancesList = document.getElementById('detail-instances-list');
 
-// Modal di Conferma (MODIFICATO)
+// Modal di Conferma
 const confirmModal = document.getElementById('confirm-modal');
 const confirmTitle = document.getElementById('confirm-title');
 const confirmMessage = document.getElementById('confirm-message');
 const confirmBtnCancel = document.getElementById('confirm-btn-cancel');
-const confirmBtnAction = document.getElementById('confirm-btn-action'); // MODIFICATO
+const confirmBtnConfirm = document.getElementById('confirm-btn-confirm');
 let confirmResolve = null; 
-
-// Modal Consuma Quantità (NUOVO)
-const consumeQuantityModal = document.getElementById('consume-quantity-modal');
-const consumeProductName = document.getElementById('consume-product-name');
-const consumeCurrentQuantity = document.getElementById('consume-current-quantity');
-const consumeBtnDecrease = document.getElementById('consume-btn-decrease');
-const consumeBtnIncrease = document.getElementById('consume-btn-increase');
-const consumeQuantityInput = document.getElementById('consume-quantity-input');
-const consumeBtnCancel = document.getElementById('consume-btn-cancel');
-const consumeBtnConfirm = document.getElementById('consume-btn-confirm');
-let consumeResolve = null; 
-let consumeMaxQuantity = 1;
 
 // Canvas per ridimensionamento immagini
 const imageCanvas = document.getElementById('temp-canvas'); 
@@ -114,7 +101,6 @@ function hideModals() {
     addInstanceModal.classList.add('hidden');
     productDetailModal.classList.add('hidden'); 
     confirmModal.classList.add('hidden'); 
-    consumeQuantityModal.classList.add('hidden'); // AGGIUNTO
     
     addProductForm.reset();
     addInstanceForm.reset();
@@ -125,42 +111,14 @@ function hideModals() {
  * Mostra un modal di conferma personalizzato.
  * @param {string} title Titolo del modal.
  * @param {string} message Messaggio di conferma.
- * @param {string} [confirmText='Conferma'] Testo del pulsante di conferma.
- * @param {string} [confirmColor='bg-red-500'] Classe colore Tailwind per il pulsante.
  * @returns {Promise<boolean>} Risolve true se confermato, false se annullato.
  */
-function showConfirmation(title, message, confirmText = 'Conferma', confirmColor = 'bg-red-500') {
+function showConfirmation(title, message) {
     return new Promise((resolve) => {
         confirmResolve = resolve; 
         confirmTitle.textContent = title;
         confirmMessage.textContent = message;
-        
-        confirmBtnAction.textContent = confirmText;
-        // Reset colori
-        confirmBtnAction.className = "text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"; // Rimuove vecchi colori
-        // Aggiungi nuovi colori
-        confirmBtnAction.classList.add(confirmColor, `hover:${confirmColor.replace('500', '600')}`);
-        
         confirmModal.classList.remove('hidden');
-    });
-}
-
-/**
- * Mostra un modal per consumare una quantità di un item.
- * @param {object} item L'item dell'inventario (con ID e quantita).
- * @param {object} product L'anagrafica prodotto (con nome).
- * @returns {Promise<number | null>} Risolve con la quantità da consumare, or null se annullato.
- */
-function showConsumeQuantity(item, product) {
-    return new Promise((resolve) => {
-        consumeResolve = resolve;
-        consumeMaxQuantity = item.quantita || 1; // Fallback
-        
-        consumeProductName.textContent = product ? product.name : 'Prodotto';
-        consumeCurrentQuantity.textContent = item.quantita || 1;
-        consumeQuantityInput.value = 1; // Resetta a 1
-
-        consumeQuantityModal.classList.remove('hidden');
     });
 }
 
@@ -353,158 +311,42 @@ function stopScanner() {
  * Inizializza IndexedDB.
  */
 function initDb() {
-    // AGGIORNAMENTO VERSIONE DB
-    const request = indexedDB.open('FoodInventoryDB', 2);
+    const request = indexedDB.open('FoodInventoryDB', 1);
 
     request.onerror = (event) => {
         console.error('Errore apertura DB:', event);
     };
 
-    request.onsuccess = async (event) => { // Aggiunto async
+    request.onsuccess = (event) => {
         console.log('DB aperto con successo');
         db = event.target.result;
         
-        // AVVIA MIGRAZIONE DATI V2 (se necessaria)
-        await migrateDataV2();
-
+        // MODIFICATO v11: Mostra la vista 'alerts' di default
         showView('alerts');
+        
+        // Renderizza comunque entrambe le liste in background
         renderInventoryAndAlerts(); 
     };
 
     request.onupgradeneeded = (event) => {
-        console.log('Esecuzione onupgradeneeded...');
         db = event.target.result;
-        const tx = event.target.transaction;
 
-        // Creazione iniziale (se il DB non esiste, oldVersion è 0)
-        if (event.oldVersion < 1) {
-            console.log('Creazione store v1');
-            if (!db.objectStoreNames.contains('anagraficaProdotti')) {
-                const productStore = db.createObjectStore('anagraficaProdotti', { keyPath: 'barcode' });
-                productStore.createIndex('name', 'name', { unique: false });
-                productStore.createIndex('brand', 'brand', { unique: false });
-            }
-            if (!db.objectStoreNames.contains('inventario')) {
-                const inventoryStore = db.createObjectStore('inventario', { keyPath: 'id', autoIncrement: true });
-                inventoryStore.createIndex('barcode_prodotto', 'barcode_prodotto', { unique: false });
-                inventoryStore.createIndex('dataScadenza', 'dataScadenza', { unique: false });
-                inventoryStore.createIndex('stato', 'stato', { unique: false });
-            }
+        if (!db.objectStoreNames.contains('anagraficaProdotti')) {
+            const productStore = db.createObjectStore('anagraficaProdotti', { keyPath: 'barcode' });
+            productStore.createIndex('name', 'name', { unique: false });
+            productStore.createIndex('brand', 'brand', { unique: false });
         }
 
-        // Upgrade da v1 a v2
-        if (event.oldVersion < 2) {
-            console.log('Aggiornamento a v2: Aggiunta indice barcode_expiry');
-            if (tx.objectStoreNames.contains('inventario')) {
-                const inventoryStore = tx.objectStore('inventario');
-                inventoryStore.createIndex('barcode_expiry', ['barcode_prodotto', 'dataScadenza'], { unique: false });
-            }
+        if (!db.objectStoreNames.contains('inventario')) {
+            const inventoryStore = db.createObjectStore('inventario', { keyPath: 'id', autoIncrement: true });
+            inventoryStore.createIndex('barcode_prodotto', 'barcode_prodotto', { unique: false });
+            inventoryStore.createIndex('dataScadenza', 'dataScadenza', { unique: false });
+            inventoryStore.createIndex('stato', 'stato', { unique: false });
         }
-        
-        console.log('DB upgrade completato.');
+
+        console.log('DB upgrade completato: anagraficaProdotti e inventario creati.');
     };
 }
-
-/**
- * Migra i dati alla v2: raggruppa item duplicati e aggiunge 'quantita'.
- * Questa funzione viene chiamata DOPO onsuccess di initDb.
- */
-async function migrateDataV2() {
-    // Controlla se la migrazione è già stata eseguita
-    if (localStorage.getItem('db_v2_migrated') === 'true' || !db) {
-        return;
-    }
-    
-    console.log('Avvio migrazione dati a v2 (raggruppamento)...');
-
-    try {
-        // 1. Leggi tutti gli item
-        const readTx = db.transaction(['inventario'], 'readonly');
-        const readStore = readTx.objectStore('inventario');
-        
-        // Usiamo una Promise per gestire la richiesta getAll
-        const allItems = await new Promise((resolve, reject) => {
-            const req = readStore.getAll();
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = (e) => reject(e.target.error);
-        });
-        
-        const groupedItems = new Map();
-        let needsMigration = false;
-
-        for (const item of allItems) {
-            // Se 'quantita' non esiste, l'item deve essere migrato
-            if (item.quantita === undefined) {
-                needsMigration = true;
-                const key = `${item.barcode_prodotto}_${item.dataScadenza}`;
-                
-                if (!groupedItems.has(key)) {
-                    // Questo è il primo item del gruppo, diventa il "master"
-                    groupedItems.set(key, { 
-                        ...item, 
-                        quantita: 1, 
-                        original_ids_to_delete: [] // Lista ID duplicati da cancellare
-                    });
-                } else {
-                    // Trovato un duplicato
-                    const masterItem = groupedItems.get(key);
-                    masterItem.quantita++;
-                    // Aggiungi l'ID di questo item alla lista da cancellare
-                    masterItem.original_ids_to_delete.push(item.id);
-                    
-                    // Mantieni la data di carico più vecchia
-                    if (new Date(item.dataCarico) < new Date(masterItem.dataCarico)) {
-                        masterItem.dataCarico = item.dataCarico;
-                    }
-                }
-            }
-        }
-
-        if (!needsMigration) {
-            console.log('Migrazione v2 non necessaria, dati già conformi.');
-            localStorage.setItem('db_v2_migrated', 'true');
-            return;
-        }
-
-        console.log(`Migrazione v2: Trovati ${groupedItems.size} gruppi da ${allItems.length} item.`);
-
-        // 2. Scrivi i dati migrati
-        const writeTx = db.transaction(['inventario'], 'readwrite');
-        const writeStore = writeTx.objectStore('inventario');
-
-        for (const item of groupedItems.values()) {
-            // Aggiorna l'item master (che ha il suo ID originale) con la nuova quantità
-            await new Promise((resolve, reject) => {
-                const req = writeStore.put(item);
-                req.onsuccess = () => resolve();
-                req.onerror = (e) => reject(e.target.error);
-            });
-            
-            // Cancella tutti i duplicati
-            for (const idToDelete of item.original_ids_to_delete) {
-                await new Promise((resolve, reject) => {
-                    const req = writeStore.delete(idToDelete);
-                    req.onsuccess = () => resolve();
-                    req.onerror = (e) => reject(e.target.error);
-                });
-            }
-        }
-        
-        // Attendi il completamento della transazione di scrittura
-        await new Promise((resolve, reject) => {
-            writeTx.oncomplete = () => resolve();
-            writeTx.onerror = (e) => reject(e.target.error);
-        });
-
-        localStorage.setItem('db_v2_migrated', 'true');
-        console.log('Migrazione dati v2 completata con successo.');
-
-    } catch (error) {
-        console.error('Migrazione v2 fallita:', error);
-        // Non impostare il flag, così ci riprova al prossimo avvio
-    }
-}
-
 
 /**
  * Controlla se un prodotto esiste nel DB Anagrafica.
@@ -572,13 +414,12 @@ async function saveNewProduct(barcode, name, brand, imageBlob) {
 }
 
 /**
- * Salva una nuova istanza O aggiorna la quantità se esiste già. (MODIFICATO)
+ * Salva una nuova istanza di un prodotto nell'inventario.
  * @param {string} barcode
  * @param {string} expiryDate
- * @param {number} quantity
  * @returns {Promise<void>}
  */
-function saveNewInstance(barcode, expiryDate, quantity) {
+function saveNewInstance(barcode, expiryDate) {
     return new Promise((resolve, reject) => {
         if (!db) {
             reject('Database non disponibile');
@@ -587,94 +428,51 @@ function saveNewInstance(barcode, expiryDate, quantity) {
 
         const transaction = db.transaction(['inventario'], 'readwrite');
         const store = transaction.objectStore('inventario');
-        // Usiamo il nuovo indice per cercare item identici
-        const index = store.index('barcode_expiry');
-        const key = [barcode, expiryDate];
-        const request = index.get(key);
 
-        request.onsuccess = (event) => {
-            const existingItem = event.target.result;
-            let writeRequest;
+        const instanceData = {
+            barcode_prodotto: barcode,
+            dataScadenza: expiryDate,
+            dataCarico: new Date().toISOString().split('T')[0], 
+            stato: 'in-frigo'
+        };
 
-            if (existingItem) {
-                // Trovato: aggiorna la quantità
-                existingItem.quantita = (existingItem.quantita || 0) + quantity; // Aggiunge la nuova quantità
-                writeRequest = store.put(existingItem);
-            } else {
-                // Non trovato: crea nuovo item
-                const instanceData = {
-                    barcode_prodotto: barcode,
-                    dataScadenza: expiryDate,
-                    dataCarico: new Date().toISOString().split('T')[0], 
-                    stato: 'in-frigo',
-                    quantita: quantity // Nuovo campo
-                };
-                writeRequest = store.add(instanceData);
-            }
-            
-            writeRequest.onsuccess = () => {
-                console.log(`Istanza prodotto ${existingItem ? 'aggiornata' : 'caricata'}:`, barcode, 'Qta:', quantity);
-                resolve();
-            };
-            writeRequest.onerror = (e) => {
-                console.error('Errore scrittura istanza:', e);
-                reject(e);
-            };
+        const request = store.add(instanceData);
+
+        request.onsuccess = () => {
+            console.log('Istanza prodotto caricata:', instanceData);
+            resolve();
         };
 
         request.onerror = (event) => {
-            console.error('Errore ricerca istanza esistente:', event);
+            console.error('Errore caricamento istanza:', event);
             reject(event);
         };
     });
 }
 
-
 /**
- * Riduce la quantità di un'istanza o la rimuove se arriva a zero. (NUOVA FUNZIONE)
- * @param {number} id - La chiave primaria dell'item
- * @param {number} quantityToConsume - Quanti item consumare
+ * Rimuove un'istanza dall'inventario (Scarico)
+ * @param {number} id - La chiave primaria dell'item nell'inventario
  * @returns {Promise<void>}
  */
-function consumeInstance(id, quantityToConsume) {
+function deleteInstance(id) {
     return new Promise((resolve, reject) => {
-        if (!db) return reject('Database non disponibile');
+        if (!db) {
+            reject('Database non disponibile');
+            return;
+        }
 
         const transaction = db.transaction(['inventario'], 'readwrite');
         const store = transaction.objectStore('inventario');
-        const request = store.get(id); // Prendi l'item tramite la sua chiave primaria
+        const request = store.delete(id);
 
-        request.onsuccess = (event) => {
-            const item = event.target.result;
-            if (!item) {
-                return reject(`Item con ID ${id} non trovato.`);
-            }
-
-            // Fallback per sicurezza (dati pre-migrazione?)
-            if (item.quantita === undefined) item.quantita = 1;
-
-            if (item.quantita <= quantityToConsume) {
-                // Consuma tutto o più di quanto disponibile, cancella la riga
-                const deleteRequest = store.delete(id);
-                deleteRequest.onsuccess = () => {
-                    console.log(`Istanza con ID ${id} rimossa (consumo totale).`);
-                    resolve();
-                };
-                deleteRequest.onerror = (e) => reject(e.target.error);
-            } else {
-                // Consuma parzialmente, aggiorna la quantità
-                item.quantita -= quantityToConsume;
-                const updateRequest = store.put(item);
-                updateRequest.onsuccess = () => {
-                    console.log(`Istanza con ID ${id} aggiornata, nuova qta: ${item.quantita}.`);
-                    resolve();
-                };
-                updateRequest.onerror = (e) => reject(e.target.error);
-            }
+        request.onsuccess = () => {
+            console.log(`Istanza con ID ${id} rimossa.`);
+            resolve();
         };
 
         request.onerror = (event) => {
-            console.error(`Errore recupero istanza ID ${id}:`, event);
+            console.error(`Errore rimozione istanza ID ${id}:`, event);
             reject(event);
         };
     });
@@ -882,7 +680,7 @@ async function renderInventoryAndAlerts() {
 }
 
 /**
- * Crea l'HTML per una card dell'inventario. (MODIFICATO)
+ * Crea l'HTML per una card dell'inventario.
  * @param {object} item - L'item dall'store 'inventario'.
  * @param {object | undefined} product - L'item dall'store 'anagraficaProdotti'.
  * @returns {HTMLElement}
@@ -904,25 +702,19 @@ function createInventoryCard(item, product) {
     const imageUrl = product && product.image ? URL.createObjectURL(product.image) : 'images/placeholder.png';
     const productName = product ? product.name : 'Prodotto Sconosciuto';
     const productBrand = product ? product.brand : 'N/D';
-    const quantita = item.quantita || 1; // Fallback per 'quantita'
 
     card.innerHTML = `
         <div class="flex items-center space-x-3 flex-grow cursor-pointer" id="product-card-info-${item.id}">
             <img src="${imageUrl}" alt="${productName}" class="w-12 h-12 object-cover rounded-md flex-shrink-0 border border-gray-600">
             <div>
-                <div class="flex items-center space-x-2">
-                    <h3 class="text-lg font-bold text-gray-100">${productName}</h3>
-                    <!-- BADGE QUANTITÀ -->
-                    <span class="text-xs font-bold bg-gray-600 text-green-400 px-2 py-0.5 rounded-full">x${quantita}</span>
-                </div>
+                <h3 class="text-lg font-bold text-gray-100">${productName}</h3>
                 <p class="text-sm text-gray-400">${productBrand}</p>
                 <p class="text-xs ${expiryColorClass}">Scade: ${formatDate(item.dataScadenza)} (${daysUntilExpiry} giorni)</p>
             </div>
         </div>
-        <!-- PULSANTE CONSUMA -->
-        <button class="consume-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-full text-sm flex items-center justify-center space-x-1">
-            <i class="fas fa-check text-xs"></i>
-            <span>Consuma</span>
+        <button class="delete-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded-full text-sm flex items-center justify-center space-x-1">
+            <i class="fas fa-trash-alt text-xs"></i>
+            <span>Scarica</span>
         </button>
     `;
 
@@ -930,30 +722,14 @@ function createInventoryCard(item, product) {
         showProductDetails(item.barcode_prodotto);
     });
 
-    // LOGICA PULSANTE CONSUMA
-    card.querySelector('.consume-btn').addEventListener('click', async () => {
-        const itemQuantity = item.quantita || 1;
-        const productNameSafe = product ? product.name : 'Prodotto';
-
-        if (itemQuantity > 1) {
-            // Mostra modal quantità
-            const quantityToConsume = await showConsumeQuantity(item, product);
-            if (quantityToConsume && quantityToConsume > 0) {
-                await consumeInstance(item.id, quantityToConsume);
-                renderInventoryAndAlerts();
-            }
-        } else {
-            // Quantità è 1, usa vecchia conferma
-            const confirmed = await showConfirmation(
-                'Conferma Consumo', 
-                `Sei sicuro di voler consumare l'ultimo "${productNameSafe}"?`,
-                'Consuma', // Testo pulsante
-                'bg-green-500' // Colore pulsante
-            );
-            if (confirmed) {
-                await consumeInstance(item.id, 1); // Consuma l'ultimo
-                renderInventoryAndAlerts(); 
-            }
+    card.querySelector('.delete-btn').addEventListener('click', async () => {
+        const confirmed = await showConfirmation(
+            'Conferma Scarico', 
+            `Sei sicuro di voler scaricare "${productName}"?`
+        );
+        if (confirmed) {
+            await deleteInstance(item.id);
+            renderInventoryAndAlerts(); // Aggiorna entrambe le liste
         }
     });
 
@@ -965,7 +741,7 @@ function createInventoryCard(item, product) {
 }
 
 /**
- * Crea l'HTML per una card di alert scadenza. (MODIFICATO)
+ * Crea l'HTML per una card di alert scadenza.
  * @param {object} item - L'item dall'store 'inventario'.
  * @param {object | undefined} product - L'item dall'store 'anagraficaProdotti'.
  * @param {number} daysUntilExpiry - Giorni rimanenti alla scadenza.
@@ -980,7 +756,6 @@ function createAlertCard(item, product, daysUntilExpiry) {
 
     const imageUrl = product && product.image ? URL.createObjectURL(product.image) : 'images/placeholder.png';
     const productName = product ? product.name : 'Prodotto Sconosciuto';
-    const quantita = item.quantita || 1; // Fallback
 
 
     card.className = `${bgColorClass} p-3 rounded-lg shadow-md flex items-center space-x-3 text-white`;
@@ -990,15 +765,11 @@ function createAlertCard(item, product, daysUntilExpiry) {
     card.innerHTML = `
         <img src="${imageUrl}" alt="${productName}" class="w-10 h-10 object-cover rounded-md flex-shrink-0 border border-gray-600">
         <div class="flex-grow cursor-pointer" id="alert-card-info-${item.id}">
-            <div class="flex items-center space-x-2">
-                <p class="font-semibold">${productName}</p>
-                <!-- BADGE QUANTITÀ -->
-                <span class="text-xs font-bold bg-gray-800 bg-opacity-30 px-2 py-0.5 rounded-full">x${quantita}</span>
-            </div>
+            <p class="font-semibold">${productName}</p>
             <p class="text-sm">Scade: ${formatDate(item.dataScadenza)}</p>
             <p class="text-xs">${daysUntilExpiry <= 0 ? 'SCADUTO!' : `(${daysUntilExpiry} giorni)`}</p>
         </div>
-        <button class="consume-btn bg-gray-600 hover:bg-gray-500 text-white p-2 rounded-full text-xs">
+        <button class="delete-btn bg-gray-600 hover:bg-gray-500 text-white p-2 rounded-full text-xs">
             <i class="fas fa-check"></i>
             <span>Fatto</span>
         </button>
@@ -1008,28 +779,14 @@ function createAlertCard(item, product, daysUntilExpiry) {
         showProductDetails(item.barcode_prodotto);
     });
 
-    // LOGICA PULSANTE CONSUMA
-    card.querySelector('.consume-btn').addEventListener('click', async () => {
-        const itemQuantity = item.quantita || 1;
-        const productNameSafe = product ? product.name : 'Prodotto';
-
-        if (itemQuantity > 1) {
-            const quantityToConsume = await showConsumeQuantity(item, product);
-            if (quantityToConsume && quantityToConsume > 0) {
-                await consumeInstance(item.id, quantityToConsume);
-                renderInventoryAndAlerts();
-            }
-        } else {
-            const confirmed = await showConfirmation(
-                'Conferma Consumo', 
-                `Hai consumato l'ultimo "${productNameSafe}"? Verrà scaricato.`,
-                'Consuma',
-                'bg-green-500'
-            );
-            if (confirmed) {
-                await consumeInstance(item.id, 1);
-                renderInventoryAndAlerts();
-            }
+    card.querySelector('.delete-btn').addEventListener('click', async () => {
+        const confirmed = await showConfirmation(
+            'Conferma Scarico', 
+            `Hai consumato "${productName}"? Verrà scaricato.`
+        );
+        if (confirmed) {
+            await deleteInstance(item.id);
+            renderInventoryAndAlerts(); // Aggiorna entrambe le liste
         }
     });
 
@@ -1074,7 +831,7 @@ function createSearchResultCard(product) {
 
 
 /**
- * Mostra il modal di dettaglio per un prodotto specifico. (MODIFICATO)
+ * Mostra il modal di dettaglio per un prodotto specifico.
  * @param {string} barcode
  */
 async function showProductDetails(barcode) {
@@ -1114,52 +871,28 @@ async function showProductDetails(barcode) {
                 if (daysUntilExpiry <= 0) textColorClass = 'text-red-400';
                 else if (daysUntilExpiry <= 7) textColorClass = 'text-yellow-400';
 
-                const quantita = instance.quantita || 1; // Fallback
 
                 const instanceDiv = document.createElement('div');
                 instanceDiv.className = 'bg-gray-700 p-3 rounded-lg flex justify-between items-center';
                 instanceDiv.innerHTML = `
-                    <div class="flex-grow">
-                        <div class="flex items-center space-x-2">
-                            <p class="font-medium ${textColorClass}">${expiryText}</p>
-                            <!-- BADGE QUANTITÀ -->
-                            <span class="text-xs font-bold bg-gray-600 text-green-400 px-2 py-0.5 rounded-full">x${quantita}</span>
-                        </div>
+                    <div>
+                        <p class="font-medium ${textColorClass}">${expiryText}</p>
                         <p class="text-xs text-gray-400">Caricato: ${formatDate(instance.dataCarico)}</p>
                     </div>
-                    <!-- PULSANTE CONSUMA -->
-                    <button class="consume-instance-btn bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded-full text-xs" data-id="${instance.id}">
-                        <i class="fas fa-check"></i> Consuma
+                    <button class="delete-instance-btn bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-full text-xs" data-id="${instance.id}">
+                        <i class="fas fa-trash-alt"></i> Scarica
                     </button>
                 `;
-                
-                // LOGICA PULSANTE CONSUMA
-                instanceDiv.querySelector('.consume-instance-btn').addEventListener('click', async (e) => {
-                    const instanceId = parseInt(e.currentTarget.dataset.id);
-                    // Troviamo l'istanza completa per ottenere la quantità
-                    const fullInstance = instances.find(i => i.id === instanceId);
-                    
-                    if (fullInstance && fullInstance.quantita > 1) {
-                         const quantityToConsume = await showConsumeQuantity(fullInstance, product);
-                         if (quantityToConsume && quantityToConsume > 0) {
-                             await consumeInstance(instanceId, quantityToConsume);
-                             // Aggiorna questo modal e le liste principali
-                             showProductDetails(barcode); 
-                             renderInventoryAndAlerts();
-                         }
-                    } else {
-                        // Quantità è 1
-                        const confirmed = await showConfirmation(
-                            'Conferma Consumo', 
-                            'Vuoi consumare l\'ultima istanza di questo prodotto?',
-                            'Consuma',
-                            'bg-green-500'
-                        );
-                        if (confirmed) {
-                            await consumeInstance(instanceId, 1);
-                            showProductDetails(barcode); 
-                            renderInventoryAndAlerts();
-                        }
+                instanceDiv.querySelector('.delete-instance-btn').addEventListener('click', async (e) => {
+                    const confirmed = await showConfirmation(
+                        'Conferma Scarico', 
+                        'Vuoi scaricare questa singola istanza del prodotto?'
+                    );
+                    if (confirmed) {
+                        const instanceId = parseInt(e.currentTarget.dataset.id);
+                        await deleteInstance(instanceId);
+                        showProductDetails(barcode); 
+                        renderInventoryAndAlerts();
                     }
                 });
                 detailInstancesList.appendChild(instanceDiv);
@@ -1203,7 +936,7 @@ closeProductDetailModalBtn.addEventListener('click', () => {
     hideModals();
 });
 
-// Modal di Conferma (MODIFICATO)
+// Modal di Conferma
 confirmBtnCancel.addEventListener('click', () => {
     if (confirmResolve) {
         confirmModal.classList.add('hidden');
@@ -1212,43 +945,11 @@ confirmBtnCancel.addEventListener('click', () => {
     }
 });
 
-confirmBtnAction.addEventListener('click', () => { // Modificato da confirmBtnConfirm
+confirmBtnConfirm.addEventListener('click', () => {
     if (confirmResolve) {
         confirmModal.classList.add('hidden');
         confirmResolve(true); 
         confirmResolve = null;
-    }
-});
-
-// Modal Consuma Quantità (NUOVI)
-consumeBtnCancel.addEventListener('click', () => {
-    if (consumeResolve) {
-        consumeQuantityModal.classList.add('hidden');
-        consumeResolve(null); // Risolve null se annullato
-        consumeResolve = null;
-    }
-});
-
-consumeBtnConfirm.addEventListener('click', () => {
-    if (consumeResolve) {
-        consumeQuantityModal.classList.add('hidden');
-        const quantity = parseInt(consumeQuantityInput.value, 10);
-        consumeResolve(quantity); 
-        consumeResolve = null;
-    }
-});
-
-consumeBtnDecrease.addEventListener('click', () => {
-    let currentVal = parseInt(consumeQuantityInput.value, 10);
-    if (currentVal > 1) {
-        consumeQuantityInput.value = currentVal - 1;
-    }
-});
-
-consumeBtnIncrease.addEventListener('click', () => {
-    let currentVal = parseInt(consumeQuantityInput.value, 10);
-    if (currentVal < consumeMaxQuantity) {
-        consumeQuantityInput.value = currentVal + 1;
     }
 });
 
@@ -1268,7 +969,7 @@ addProductForm.addEventListener('submit', async (e) => {
             console.log('Immagine ridimensionata. Dimensione:', imageBlob.size / 1024, 'KB');
         } catch (error) {
             console.error('Errore durante il ridimensionamento dell\'immagine:', error);
-            showConfirmation('Errore Immagine', 'Errore nel caricamento dell'immagine. Prova senza immagine.');
+            showConfirmation('Errore Immagine', 'Errore nel caricamento dell\'immagine. Prova senza immagine.');
             imageBlob = null; 
         }
     }
@@ -1285,27 +986,28 @@ addProductForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Aggiunta Nuova Istanza Prodotto (MODIFICATO)
+// Aggiunta Nuova Istanza Prodotto
 addInstanceForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const barcode = instanceBarcodeSpan.textContent;
     const expiry = instanceExpiryInput.value; 
-    const quantity = parseInt(instanceQuantityInput.value, 10) || 1; // Prendi la quantità
 
-    if (barcode && expiry && quantity > 0) { // Controlla anche quantity
+    if (barcode && expiry) {
         try {
-            // Modifica la chiamata: passa la quantità
-            await saveNewInstance(barcode, expiry, quantity); 
-            
+            await saveNewInstance(barcode, expiry);
             hideModals();
+            
+            // MODIFICATO v11: Torna alla vista 'alerts'
             showView('alerts'); 
+            
+            // Renderizza comunque entrambe le liste in background
             renderInventoryAndAlerts(); 
         } catch (err) {
             console.error('Errore nel caricamento istanza:', err);
             showConfirmation('Errore Database', 'Errore nel caricamento dell\'istanza del prodotto.');
         }
     } else {
-        showConfirmation('Dati Mancanti', 'Per favore, inserisci data di scadenza e quantità valida.');
+        showConfirmation('Dati Mancanti', 'Per favore, inserisci la data di scadenza.');
     }
 });
 
