@@ -74,7 +74,7 @@ let db;
  */
 function formatDate(date) {
     const d = new Date(date);
-    return d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /**
@@ -625,39 +625,70 @@ function showAddProductModal(barcode) {
 
 /**
  * Renderizza l'inventario completo e gli alert.
+ * CORRETTO NELLA v10 per evitare transazioni nidificate.
  */
 async function renderInventory() {
     if (!db) return;
 
+    // Soluzione v10: Carica prima l'anagrafica in memoria (Map)
+    // per evitare transazioni nidificate nel cursore.
+    const productMap = new Map();
+    try {
+        const productTx = db.transaction(['anagraficaProdotti'], 'readonly');
+        const productStore = productTx.objectStore('anagraficaProdotti');
+        const productRequest = productStore.openCursor();
+        
+        // Aspetta che il cursore dell'anagrafica finisca
+        await new Promise((resolve, reject) => {
+            productRequest.onsuccess = event => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    productMap.set(cursor.value.barcode, cursor.value);
+                    cursor.continue();
+                } else {
+                    resolve(); // Cursore finito
+                }
+            };
+            productRequest.onerror = event => reject(event.target.error);
+        });
+        // Transazione anagrafica completata
+
+    } catch (e) {
+        console.error("Errore nel pre-caricamento anagrafica:", e);
+        inventoryList.innerHTML = '<p class="text-red-400">Errore fatale nel caricamento anagrafica.</p>';
+        return;
+    }
+
+    // Ora scorri l'inventario (transazione separata)
     inventoryList.innerHTML = '';
     alertsListWrapper.innerHTML = '';
     let inventoryCount = 0;
     let alertCount = 0;
 
-    const transaction = db.transaction(['inventario', 'anagraficaProdotti'], 'readonly');
-    const inventoryStore = transaction.objectStore('inventario');
-    
-    const request = inventoryStore.openCursor();
+    const inventoryTx = db.transaction(['inventario'], 'readonly');
+    const inventoryStore = inventoryTx.objectStore('inventario');
+    const inventoryRequest = inventoryStore.openCursor();
 
-    request.onsuccess = async (event) => {
+    inventoryRequest.onsuccess = (event) => {
         const cursor = event.target.result;
         if (cursor) {
             inventoryCount++;
             const item = cursor.value;
-            const product = await getProductByBarcode(item.barcode_prodotto); // Recupera info prodotto
+            // Usa la Mappa (accesso sincrono)
+            const product = productMap.get(item.barcode_prodotto); 
 
             const itemCard = createInventoryCard(item, product);
             inventoryList.appendChild(itemCard);
 
             const daysUntilExpiry = getDaysUntilExpiry(item.dataScadenza);
-            if (daysUntilExpiry <= 7) { // 7 giorni o meno alla scadenza
+            if (daysUntilExpiry <= 7) { // 7 giorni o meno
                 alertCount++;
                 const alertCard = createAlertCard(item, product, daysUntilExpiry);
                 alertsListWrapper.appendChild(alertCard);
             }
             cursor.continue();
         } else {
-            // Fine cursor
+            // Fine cursore inventario
             emptyInventoryMsg.classList.toggle('hidden', inventoryCount > 0);
             if (alertCount === 0) {
                 alertsListWrapper.innerHTML = '<p class="text-sm text-gray-400 italic">Nessun prodotto in scadenza imminente.</p>';
@@ -665,17 +696,16 @@ async function renderInventory() {
         }
     };
 
-    request.onerror = (event) => {
+    inventoryRequest.onerror = (event) => {
         console.error('Errore rendering inventario:', event);
         inventoryList.innerHTML = '<p class="text-red-400">Errore nel caricamento inventario.</p>';
-        alertsListWrapper.innerHTML = '<p class="text-red-400">Errore nel caricamento alert.</p>';
     };
 }
 
 /**
  * Crea l'HTML per una card dell'inventario.
  * @param {object} item - L'item dall'store 'inventario'.
- * @param {object} product - L'item dall'store 'anagraficaProdotti'.
+ * @param {object | undefined} product - L'item dall'store 'anagraficaProdotti'.
  * @returns {HTMLElement}
  */
 function createInventoryCard(item, product) {
@@ -694,13 +724,15 @@ function createInventoryCard(item, product) {
 
     // Costruisci l'URL dell'immagine se presente
     const imageUrl = product && product.image ? URL.createObjectURL(product.image) : 'images/placeholder.png';
+    const productName = product ? product.name : 'Prodotto Sconosciuto';
+    const productBrand = product ? product.brand : 'N/D';
 
     card.innerHTML = `
         <div class="flex items-center space-x-3 flex-grow cursor-pointer" id="product-card-info-${item.id}">
-            <img src="${imageUrl}" alt="${product?.name || 'Prodotto Sconosciuto'}" class="w-12 h-12 object-cover rounded-md flex-shrink-0 border border-gray-600">
+            <img src="${imageUrl}" alt="${productName}" class="w-12 h-12 object-cover rounded-md flex-shrink-0 border border-gray-600">
             <div>
-                <h3 class="text-lg font-bold text-gray-100">${product?.name || 'Prodotto Sconosciuto'}</h3>
-                <p class="text-sm text-gray-400">${product?.brand || 'N/D'}</p>
+                <h3 class="text-lg font-bold text-gray-100">${productName}</h3>
+                <p class="text-sm text-gray-400">${productBrand}</p>
                 <p class="text-xs ${expiryColorClass}">Scade: ${formatDate(item.dataScadenza)} (${daysUntilExpiry} giorni)</p>
             </div>
         </div>
@@ -719,7 +751,7 @@ function createInventoryCard(item, product) {
     card.querySelector('.delete-btn').addEventListener('click', async () => {
         const confirmed = await showConfirmation(
             'Conferma Scarico', 
-            `Sei sicuro di voler scaricare "${product?.name || 'questo prodotto'}"?`
+            `Sei sicuro di voler scaricare "${productName}"?`
         );
         if (confirmed) {
             await deleteInstance(item.id);
@@ -739,7 +771,7 @@ function createInventoryCard(item, product) {
 /**
  * Crea l'HTML per una card di alert scadenza.
  * @param {object} item - L'item dall'store 'inventario'.
- * @param {object} product - L'item dall'store 'anagraficaProdotti'.
+ * @param {object | undefined} product - L'item dall'store 'anagraficaProdotti'.
  * @param {number} daysUntilExpiry - Giorni rimanenti alla scadenza.
  * @returns {HTMLElement}
  */
@@ -752,6 +784,7 @@ function createAlertCard(item, product, daysUntilExpiry) {
 
     // Costruisci l'URL dell'immagine se presente
     const imageUrl = product && product.image ? URL.createObjectURL(product.image) : 'images/placeholder.png';
+    const productName = product ? product.name : 'Prodotto Sconosciuto';
 
 
     card.className = `${bgColorClass} p-3 rounded-lg shadow-md flex items-center space-x-3 text-white`;
@@ -759,9 +792,9 @@ function createAlertCard(item, product, daysUntilExpiry) {
     card.dataset.barcode = item.barcode_prodotto;
 
     card.innerHTML = `
-        <img src="${imageUrl}" alt="${product?.name || 'Prodotto Sconosciuto'}" class="w-10 h-10 object-cover rounded-md flex-shrink-0 border border-gray-600">
+        <img src="${imageUrl}" alt="${productName}" class="w-10 h-10 object-cover rounded-md flex-shrink-0 border border-gray-600">
         <div class="flex-grow cursor-pointer" id="alert-card-info-${item.id}">
-            <p class="font-semibold">${product?.name || 'Prodotto Sconosciuto'}</p>
+            <p class="font-semibold">${productName}</p>
             <p class="text-sm">Scade: ${formatDate(item.dataScadenza)}</p>
             <p class="text-xs">${daysUntilExpiry <= 0 ? 'SCADUTO!' : `(${daysUntilExpiry} giorni)`}</p>
         </div>
@@ -780,7 +813,7 @@ function createAlertCard(item, product, daysUntilExpiry) {
     card.querySelector('.delete-btn').addEventListener('click', async () => {
         const confirmed = await showConfirmation(
             'Conferma Scarico', 
-            `Hai consumato "${product?.name || 'questo prodotto'}"? Verrà scaricato.`
+            `Hai consumato "${productName}"? Verrà scaricato.`
         );
         if (confirmed) {
             await deleteInstance(item.id);
@@ -1010,10 +1043,8 @@ addInstanceForm.addEventListener('submit', async (e) => {
         try {
             await saveNewInstance(barcode, expiry);
             hideModals();
-            // Aggiorna la vista
-            renderInventory();
-            checkAlerts();
-            // Torna alla vista inventario
+            // Soluzione v10: Chiama solo showView.
+            // renderInventory() e checkAlerts() sono già chiamati da showView.
             showView('inventory');
         } catch (err) {
             console.error('Errore nel caricamento istanza:', err);
