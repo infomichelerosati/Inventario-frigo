@@ -230,25 +230,31 @@ function startScanner() {
             },
         },
         decoder: {
-            readers: ["ean_reader"], // Supporto EAN (EAN-13, UPC, EAN-8)
-            debug: {
-                showCanvas: true,
-                showPatches: true,
-                showFoundPatches: true,
-                showSkeleton: true,
-                showLabels: true,
-                showPatchLabels: true,
-                showRemainingPatchLabels: true,
-                boxFromPatches: {
-                    showTransformed: true,
-                    showTransformedBox: true,
-                    showEnv: true
-                },
-                showLine: true,
-                showPoint: true
-            }
+            readers: [
+                "ean_reader",
+                "code_128_reader",
+                "code_39_reader",
+                "codabar_reader",
+                "upc_reader"
+            ] // Supporto EAN, UPC, Code 128, Code 39, Codabar
         },
         locate: true, // Prova a localizzare il codice a barre
+        debug: { // <-- SPOSTATO QUI, AL LIVELLO CORRETTO
+            showCanvas: true,
+            showPatches: true,
+            showFoundPatches: true,
+            showSkeleton: true,
+            showLabels: true,
+            showPatchLabels: true,
+            showRemainingPatchLabels: true,
+            boxFromPatches: {
+                showTransformed: true,
+                showTransformedBox: true,
+                showEnv: true
+            },
+            showLine: true,
+            showPoint: true
+        }
     }, function (err) {
         if (err) {
             console.error(err);
