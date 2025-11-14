@@ -223,8 +223,9 @@ function startScanner() {
             type: "LiveStream",
             target: document.querySelector('#interactive'),
             constraints: {
-                width: { min: 640 },
-                height: { min: 480 },
+                // Rimuoviamo i vincoli di risoluzione
+                // width: { min: 640 },
+                // height: { min: 480 },
                 facingMode: "environment", // Usa la fotocamera posteriore
                 aspectRatio: { min: 1, max: 2 }
             },
@@ -829,7 +830,7 @@ function createSearchResultCard(product) {
     
     // Pulizia URL oggetto
     card.addEventListener('DOMNodeRemoved', () => {
-        if (product.image) URL.revokeObjectURL(imageUrl);
+        if (product.image) URL.revokeObjectURL(product.image);
     });
 
     return card;
