@@ -1,6 +1,8 @@
 // Elementi DOM
 const stopScanBtn = document.getElementById('stop-scan-btn');
 const scannerView = document.getElementById('scanner-view');
+// NUOVO: Elemento video per l'API nativa
+const scannerVideo = document.getElementById('scanner-video');
 
 const inventoryList = document.getElementById('inventory-list');
 const alertsListWrapper = document.getElementById('alerts-list-wrapper');
@@ -72,7 +74,7 @@ let db;
  */
 function formatDate(date) {
     const d = new Date(date);
-    return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /**
@@ -184,7 +186,6 @@ if ('serviceWorker' in navigator) {
                     const newWorker = registration.installing;
                     newWorker.addEventListener('statechange', () => {
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // C'è un nuovo Service Worker e uno vecchio è attivo
                             updatePromptModal.classList.remove('hidden');
                         }
                     });
@@ -203,119 +204,117 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// --- 3. LOGICA DI SCANSIONE BARCODE ---
+// --- 3. LOGICA DI SCANSIONE BARCODE (Sostituita con BarcodeDetector API) ---
 
 let isScanning = false; // Flag per lo stato dello scanner
+let videoStream = null; // Riferimento allo stream della fotocamera
+let barcodeDetector = null; // Riferimento al detector
+let detectionFrameId = null; // ID per requestAnimationFrame
 
 /**
- * Avvia lo scanner QuaggaJS.
+ * Avvia lo scanner (BarcodeDetector API).
  */
-function startScanner() {
-    if (isScanning) return; // Non riavviare se già in scansione
+async function startScanner() {
+    if (isScanning) return;
 
-    scannerView.classList.remove('hidden');
-    document.body.classList.add('overflow-hidden'); // Blocca lo scroll del body
-    isScanning = true;
+    // Controlla il supporto per BarcodeDetector
+    if (!('BarcodeDetector' in window)) {
+        await showConfirmation('Errore', 'Il tuo browser non supporta la scansione nativa dei codici a barre.');
+        return;
+    }
 
-    Quagga.init({
-        inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: document.querySelector('#interactive'),
-            constraints: {
-                // v8: Rimosse tutte le constraints tranne facingMode
-                // per la massima compatibilità
-                facingMode: "environment", // Usa la fotocamera posteriore
+    try {
+        // Inizializza il detector
+        barcodeDetector = new BarcodeDetector({
+            formats: [
+                'ean_13',
+                'code_128',
+                'code_39',
+                'codabar',
+                'upc_a',
+                'upc_e'
+            ]
+        });
+
+        // Avvia la fotocamera
+        videoStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'environment',
+                // Prova a chiedere una risoluzione decente
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             },
-        },
-        decoder: {
-            readers: [
-                "ean_reader",
-                "code_128_reader",
-                "code_39_reader",
-                "codabar_reader",
-                "upc_reader"
-            ] // Supporto EAN, UPC, Code 128, Code 39, Codabar
-        },
-        locate: true, // Prova a localizzare il codice a barre
-        debug: { // Debug per visualizzare i riquadri
-            showCanvas: true,
-            showPatches: true,
-            showFoundPatches: true,
-            showSkeleton: true,
-            showLabels: true,
-            showPatchLabels: true,
-            showRemainingPatchLabels: true,
-            boxFromPatches: {
-                showTransformed: true,
-                showTransformedBox: true,
-                showEnv: true
-            },
-            showLine: true,
-            showPoint: true
-        }
-    }, function (err) {
-        if (err) {
-            console.error(err);
-            // alert('Impossibile avviare la fotocamera. Assicurati di aver dato i permessi.');
-            showConfirmation('Errore Fotocamera', 'Impossibile avviare la fotocamera. Assicurati di aver dato i permessi.');
-            stopScanner(); // Ferma lo scanner in caso di errore
-            return;
-        }
-        console.log("Inizializzazione Quagga completata. Inizio scansione.");
-        Quagga.start();
-        // Aggiungi la linea di scansione dinamica
-        const scanline = document.createElement('div');
-        scanline.id = 'scanline';
-        scanline.style.cssText = 'position: absolute; top: 10%; width: 100%; height: 2px; background: red; box-shadow: 0 0 10px red; animation: scanline 3s infinite alternate;';
-        document.querySelector('#interactive').appendChild(scanline);
-    });
+            audio: false
+        });
 
-    Quagga.onDetected(function (result) {
-        if (result.codeResult && result.codeResult.code) {
-            const barcode = result.codeResult.code;
-            console.log("Barcode rilevato:", barcode);
-            stopScanner();
-            checkProductInDb(barcode);
-        }
-    });
+        isScanning = true;
+        scannerView.classList.remove('hidden');
+        document.body.classList.add('overflow-hidden');
 
-    Quagga.onProcessed(function (result) {
-        const drawingCtx = Quagga.canvas.ctx.overlay;
-        const drawingCanvas = Quagga.canvas.dom.overlay;
+        scannerVideo.srcObject = videoStream;
+        await scannerVideo.play();
 
-        if (result) {
-            if (result.boxes) {
-                drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.width), parseInt(drawingCanvas.height));
-                result.boxes.filter(function (box) {
-                    return box !== result.box;
-                }).forEach(function (box) {
-                    Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, '#00F', 1);
-                });
-            }
+        // Avvia il loop di rilevamento
+        detectBarcode();
 
-            if (result.box) {
-                Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, '#0F0', 2);
-            }
-
-            if (result.codeResult && result.codeResult.code) {
-                Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, '#F00', 3);
-            }
-        }
-    });
+    } catch (err) {
+        console.error('Errore avvio scanner:', err);
+        await showConfirmation('Errore Fotocamera', `Impossibile avviare la fotocamera. Assicurati di aver dato i permessi. Dettagli: ${err.message}`);
+        stopScanner();
+    }
 }
 
 /**
- * Ferma lo scanner QuaggaJS.
+ * Loop di rilevamento che si auto-esegue.
+ */
+async function detectBarcode() {
+    if (!isScanning || !barcodeDetector || !scannerVideo) return;
+
+    try {
+        // Rileva i codici nel frame video corrente
+        const barcodes = await barcodeDetector.detect(scannerVideo);
+
+        if (barcodes.length > 0) {
+            const barcode = barcodes[0].rawValue;
+            console.log("Barcode rilevato:", barcode);
+            stopScanner(); // Ferma tutto
+            checkProductInDb(barcode); // Passa il barcode alla logica del DB
+        } else {
+            // Se non trova nulla, continua il loop
+            detectionFrameId = requestAnimationFrame(detectBarcode);
+        }
+    } catch (err) {
+        console.error('Errore durante il rilevamento:', err);
+        // Continua a provare
+        if (isScanning) {
+            detectionFrameId = requestAnimationFrame(detectBarcode);
+        }
+    }
+}
+
+/**
+ * Ferma lo scanner (BarcodeDetector API).
  */
 function stopScanner() {
     if (!isScanning) return;
-    Quagga.stop();
+    isScanning = false;
+
+    // Ferma il loop di rilevamento
+    if (detectionFrameId) {
+        cancelAnimationFrame(detectionFrameId);
+        detectionFrameId = null;
+    }
+
+    // Ferma la fotocamera
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+    }
+    
+    scannerVideo.srcObject = null;
     scannerView.classList.add('hidden');
     document.body.classList.remove('overflow-hidden');
-    isScanning = false;
-    const scanline = document.getElementById('scanline');
-    if (scanline) scanline.remove(); // Rimuovi la linea di scansione
+    barcodeDetector = null; // Rilascia il detector
 }
 
 
@@ -349,7 +348,6 @@ function initDb() {
             const productStore = db.createObjectStore('anagraficaProdotti', { keyPath: 'barcode' });
             productStore.createIndex('name', 'name', { unique: false });
             productStore.createIndex('brand', 'brand', { unique: false });
-            // L'immagine sarà salvata come Blob direttamente nell'oggetto
         }
 
         // Inventario (ogni istanza ha un ID univoco, e un riferimento al barcode)
@@ -357,7 +355,7 @@ function initDb() {
             const inventoryStore = db.createObjectStore('inventario', { keyPath: 'id', autoIncrement: true });
             inventoryStore.createIndex('barcode_prodotto', 'barcode_prodotto', { unique: false });
             inventoryStore.createIndex('dataScadenza', 'dataScadenza', { unique: false });
-            inventoryStore.createIndex('stato', 'stato', { unique: false }); // es. 'in-frigo', 'consumato'
+            inventoryStore.createIndex('stato', 'stato', { unique: false });
         }
 
         console.log('DB upgrade completato: anagraficaProdotti e inventario creati.');
@@ -366,8 +364,6 @@ function initDb() {
 
 /**
  * Controlla se un prodotto esiste nel DB Anagrafica.
- * Se esiste, apre il modal per aggiungere un'istanza.
- * Se non esiste, apre il modal per aggiungere un nuovo prodotto all'anagrafica.
  * @param {string} barcode - Il codice a barre rilevato.
  */
 function checkProductInDb(barcode) {
@@ -380,12 +376,12 @@ function checkProductInDb(barcode) {
     request.onsuccess = (event) => {
         const product = event.target.result;
         if (product) {
-            // Prodotto già in anagrafica, chiedi data scadenza e aggiungi istanza
+            // Prodotto già in anagrafica
             instanceNameSpan.textContent = product.name + (product.brand ? ` (${product.brand})` : '');
             instanceBarcodeSpan.textContent = product.barcode;
             addInstanceModal.classList.remove('hidden');
         } else {
-            // Prodotto non in anagrafica, chiedi dettagli
+            // Prodotto non in anagrafica
             productBarcodeInput.value = barcode;
             addProductModal.classList.remove('hidden');
         }
@@ -840,8 +836,6 @@ function createSearchResultCard(product) {
  */
 function checkAlerts() {
     // La logica è già integrata in renderInventory
-    // Se volessimo un controllo separato, andrebbe qui.
-    // Per ora, chiamare renderInventory() è sufficiente.
 }
 
 /**
@@ -868,7 +862,6 @@ async function showProductDetails(barcode) {
         if (product.image) {
             const imageUrl = URL.createObjectURL(product.image);
             detailProductImage.src = imageUrl;
-            // Non usiamo onload per revoke perché l'immagine resta visibile
         } else {
             detailProductImage.src = 'images/placeholder.png'; // Immagine di fallback
         }
