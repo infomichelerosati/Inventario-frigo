@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventario Frigo</title>
     
     <!-- Tailwind CSS -->
@@ -229,6 +229,11 @@
                 <p><strong>Barcode:</strong> <span id="instance-barcode"></span></p>
             </div>
             <form id="add-instance-form">
+                <!-- CAMPO QUANTITÀ AGGIUNTO -->
+                <div class="mb-4">
+                    <label class="block text-gray-300 text-sm font-bold mb-2" for="instance-quantity">Quantità</label>
+                    <input id="instance-quantity" type="number" value="1" min="1" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700" required>
+                </div>
                 <div class="mb-4">
                     <label class="block text-gray-300 text-sm font-bold mb-2" for="instance-expiry">Data di Scadenza</label>
                     <input id="instance-expiry" type="date" class="shadow appearance-none border border-gray-600 rounded w-full py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline focus:border-green-500 bg-gray-700" required>
@@ -267,7 +272,28 @@
             <p class="mb-6" id="confirm-message">Sei sicuro?</p>
             <div class="flex items-center justify-end space-x-2">
                 <button id="confirm-btn-cancel" type="button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Annulla</button>
-                <button id="confirm-btn-confirm" type="button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Conferma</button>
+                <!-- Pulsante di conferma modificato per ID e colore dinamico -->
+                <button id="confirm-btn-action" type="button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Conferma</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODAL: Consuma Quantità (NUOVO) -->
+    <div id="consume-quantity-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm text-gray-200">
+            <h3 class="text-lg font-bold mb-4 text-yellow-400" id="consume-title">Consuma Prodotto</h3>
+            <p class="mb-2">Quanti <strong id="consume-product-name" class="text-white"></strong> hai consumato?</p>
+            <p class="text-xs text-gray-400 mb-4">Disponibili: <span id="consume-current-quantity"></span></p>
+            
+            <div class="flex items-center justify-center space-x-4 my-6">
+                <button id="consume-btn-decrease" class="bg-gray-600 hover:bg-gray-500 text-white font-bold h-12 w-12 rounded-full text-2xl focus:outline-none focus:shadow-outline">-</button>
+                <input id="consume-quantity-input" type="text" value="1" readonly class="shadow appearance-none border-none rounded w-16 h-12 text-white text-center text-2xl font-bold bg-gray-700">
+                <button id="consume-btn-increase" class="bg-gray-600 hover:bg-gray-500 text-white font-bold h-12 w-12 rounded-full text-2xl focus:outline-none focus:shadow-outline">+</button>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2">
+                <button id="consume-btn-cancel" type="button" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Annulla</button>
+                <button id="consume-btn-confirm" type="button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Conferma</button>
             </div>
         </div>
     </div>
