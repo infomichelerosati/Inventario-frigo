@@ -3,7 +3,7 @@
   "short_name": "Inventario",
   "description": "Gestore inventario e scadenze alimentari con scanner barcode.",
   "start_url": ".",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#111827",
   "theme_color": "#22c55e",
   "orientation": "portrait-primary",
@@ -20,3 +20,4 @@
     }
   ]
 }
+
