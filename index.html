@@ -15,46 +15,60 @@
     <link rel="apple-touch-icon" href="images/icon-192x192.png">
 
     <style>
-        /* Stile per il mirino dello scanner */
-        #interactive.viewport { position: relative; }
-            @keyframes scanline {
-                0% { top: 10%; }
-                50% { top: 90%; }
-                100% { top: 10%; }
-            }
+        /* MODIFICATO: Stile per la nuova scanline (overlay video) */
+        .scanline-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Rende il div cliccabile attraverso */
+        }
+        .scanline-inner {
+            position: absolute;
+            top: 10%; /* Posizione iniziale */
+            width: 100%;
+            height: 2px;
+            background: red;
+            box-shadow: 0 0 10px red;
+            animation: scanline 3s infinite ease-in-out;
+        }
 
-            /* --- Stile per il watermark animato --- */
-            .michele-watermark {
-                font-size: 0.75rem; /* text-xs, piccolo come richiesto */
-                font-weight: 600; /* semibold */
-                /* Un gradiente arcobaleno per l'animazione */
-                background: linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899);
-                background-size: 300% auto;
-                -webkit-background-clip: text;
-                background-clip: text;
-                color: transparent;
-                /* Animazione combinata: flusso gradiente + pulse */
-                animation: gradient-flow 4s linear infinite, 
-                             gentle-pulse 2.5s infinite ease-in-out;
-                transform-origin: center; /* Assicura che il pulse sia centrato */
-            }
+        @keyframes scanline {
+            0%, 100% { top: 10%; }
+            50% { top: 90%; }
+        }
 
-            @keyframes gradient-flow {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-                100% { background-position: 0% 50%; }
-            }
+        /* --- Stile per il watermark animato --- */
+        .michele-watermark {
+            font-size: 0.75rem; /* text-xs, piccolo come richiesto */
+            font-weight: 600; /* semibold */
+            background: linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899);
+            background-size: 300% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: gradient-flow 4s linear infinite, 
+                         gentle-pulse 2.5s infinite ease-in-out;
+            transform-origin: center;
+        }
 
-            @keyframes gentle-pulse {
-                0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.05); } /* Leggero pulse */
-            }
-            /* --- Fine stile watermark --- */
+        @keyframes gradient-flow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
-            /* Stile per i date-picker in dark mode */
-            input[type="date"] {
-                color-scheme: dark;
-            }
+        @keyframes gentle-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        /* --- Fine stile watermark --- */
+
+        /* Stile per i date-picker in dark mode */
+        input[type="date"] {
+            color-scheme: dark;
+        }
 
     </style>
 </head>
@@ -70,8 +84,16 @@
             <h1 class="text-3xl font-bold text-green-500"><i class="fas fa-box-archive mr-2"></i>Inventario Frigo</h1>
         </header>
 
-        <!-- Vista Scanner (Nascosta) --><div id="scanner-view" class="hidden fixed inset-0 bg-black z-50">
-            <div id="interactive" class="viewport"></div>
+        <!-- Vista Scanner (Nascosta) - MODIFICATA PER API NATIVA -->
+        <div id="scanner-view" class="hidden fixed inset-0 bg-black z-50">
+            <!-- SOSTITUITO: <div id="interactive"> rimosso e sostituito con <video> -->
+            <video id="scanner-video" class="w-full h-full object-cover" playsinline></video>
+            
+            <!-- Aggiunta la scanline come overlay separato -->
+            <div class="scanline-overlay">
+                <div class="scanline-inner"></div>
+            </div>
+            
             <button id="stop-scan-btn" class="absolute bottom-4 left-4 z-60 bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
                 <i class="fas fa-times"></i>
                 <span>Annulla</span>
@@ -218,7 +240,7 @@
 
     <!-- Canvas per ridimensionamento temporaneo (nascosto) --><canvas id="temp-canvas" class="hidden"></canvas>
 
-    <!-- QuaggaJS CDN --><script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <!-- RIMOSSO: QuaggaJS CDN -->
     
     <!-- Logica Applicazione --><script src="app.js" type="module"></script>
 </body>
